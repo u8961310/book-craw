@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>書單統計</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#f5f5f5;color:#333;line-height:1.6}
+.container{max-width:960px;margin:0 auto;padding:24px 16px}
+h1{margin-bottom:8px;color:#1d3557}
+.summary{color:#666;margin-bottom:24px}
+.back-link{display:inline-block;margin-bottom:16px;color:#e63946;text-decoration:none;font-weight:600}
+.back-link:hover{text-decoration:underline}
+.nav-links{margin-bottom:16px}
+.nav-links a{color:#e63946;text-decoration:none;font-weight:600;font-size:15px}
+.nav-links a:hover{text-decoration:underline}
+.cat-title{border-bottom:2px solid #e63946;padding-bottom:4px;margin:32px 0 16px}
+.card{display:flex;background:#fff;border:1px solid #eee;border-radius:6px;
+  padding:12px;margin-bottom:12px;gap:12px}
+.card .cover{width:80px;height:auto;flex-shrink:0;border-radius:3px}
+.card-body{display:flex;flex-direction:column;gap:4px}
+.book-title{font-size:15px;color:#1d3557;text-decoration:none;font-weight:bold}
+.book-title:hover{text-decoration:underline}
+.meta{font-size:13px;color:#666}
+.badge-new{display:inline-block;background:#e63946;color:#fff;font-size:11px;
+  font-weight:bold;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle}
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.filter-btn{border:1px solid #1d3557;background:#fff;color:#1d3557;padding:4px 14px;
+  border-radius:16px;cursor:pointer;font-size:13px;transition:all .2s}
+.filter-btn:hover{background:#1d3557;color:#fff}
+.filter-btn.active{background:#1d3557;color:#fff}
+.index-list{list-style:none;padding:0}
+.index-list li{padding:12px 16px;background:#fff;border:1px solid #eee;
+  border-radius:6px;margin-bottom:8px}
+.index-list a{color:#1d3557;text-decoration:none;font-weight:600;font-size:16px}
+.index-list a:hover{color:#e63946}
+@media(max-width:600px){
+  .card{flex-direction:column;align-items:flex-start}
+  .card .cover{width:60px}
+  .bar-label{width:80px;font-size:11px}
+}
+.chart{margin-bottom:32px}
+.bar-row{display:flex;align-items:center;margin-bottom:6px;gap:8px}
+.bar-label{width:120px;flex-shrink:0;font-size:13px;text-align:right;color:#555}
+.bar-track{flex:1;background:#eee;border-radius:4px;height:22px;overflow:hidden}
+.bar-fill{height:100%;background:#1d3557;border-radius:4px;transition:width .3s}
+.bar-fill.cat-fill{background:#e63946}
+.bar-value{width:40px;font-size:13px;color:#555}
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="index.html" class="back-link">&larr; 返回首頁</a>
+  <h1>書單統計</h1>
+  <p class="summary">共 1 期，244 本書</p>
+
+  <h2 class="cat-title">每期書籍數量</h2>
+  <div class="chart"><div class="bar-row"><span class="bar-label">2026-02-15</span><div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div><span class="bar-value">244</span></div></div>
+
+  <h2 class="cat-title">各分類累計書籍數量</h2>
+  <div class="chart"><div class="bar-row"><span class="bar-label">童書/青少年文學</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:100.0%"></div></div><span class="bar-value">53</span></div><div class="bar-row"><span class="bar-label">人文社科</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:52.8%"></div></div><span class="bar-value">28</span></div><div class="bar-row"><span class="bar-label">心理勵志</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:50.9%"></div></div><span class="bar-value">27</span></div><div class="bar-row"><span class="bar-label">宗教命理</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:50.9%"></div></div><span class="bar-value">27</span></div><div class="bar-row"><span class="bar-label">考試用書</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:39.6%"></div></div><span class="bar-value">21</span></div><div class="bar-row"><span class="bar-label">商業理財</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:30.2%"></div></div><span class="bar-value">16</span></div><div class="bar-row"><span class="bar-label">生活風格</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:26.4%"></div></div><span class="bar-value">14</span></div><div class="bar-row"><span class="bar-label">藝術設計</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:20.8%"></div></div><span class="bar-value">11</span></div><div class="bar-row"><span class="bar-label">語言學習</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:18.9%"></div></div><span class="bar-value">10</span></div><div class="bar-row"><span class="bar-label">電腦資訊</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:18.9%"></div></div><span class="bar-value">10</span></div><div class="bar-row"><span class="bar-label">專業/教科書/政府出版品</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:17.0%"></div></div><span class="bar-value">9</span></div><div class="bar-row"><span class="bar-label">自然科普</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:11.3%"></div></div><span class="bar-value">6</span></div><div class="bar-row"><span class="bar-label">醫療保健</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:11.3%"></div></div><span class="bar-value">6</span></div><div class="bar-row"><span class="bar-label">飲食</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:5.7%"></div></div><span class="bar-value">3</span></div><div class="bar-row"><span class="bar-label">親子教養</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:3.8%"></div></div><span class="bar-value">2</span></div><div class="bar-row"><span class="bar-label">旅遊</span><div class="bar-track"><div class="bar-fill cat-fill" style="width:1.9%"></div></div><span class="bar-value">1</span></div></div>
+</div>
+</body>
+</html>
