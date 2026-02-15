@@ -1,6 +1,6 @@
 # book-craw
 
-博客來新書/預購書爬蟲，自動爬取 21 個中文書分類的近期新書，過濾最近 30 天內出版的書籍，透過 Gmail 寄送 HTML 書單郵件。
+博客來新書/預購書爬蟲，自動爬取中文書分類的近期新書，過濾最近 7 天內出版的書籍，透過 Gmail 寄送 HTML 書單郵件，並可產生靜態頁面部署到 GitHub Pages 供線上瀏覽歷史書單。
 
 ## 功能
 
@@ -10,10 +10,11 @@
 - 擷取書名、作者、出版社、出版日期、價格、封面圖
 - 產生 HTML 格式書單郵件，透過 Gmail SMTP 寄出
 - 支援 GitHub Actions 每週自動執行
+- 產生靜態 HTML 書單頁面，部署到 GitHub Pages 瀏覽歷史書單
 
 ## 支援分類
 
-文學小說、商業理財、藝術設計、人文社科、自然科普、心理勵志、醫療保健、飲食、生活風格、旅遊、宗教命理、親子教養、童書/青少年文學、輕小說、漫畫/圖文書、語言學習、考試用書、電腦資訊、專業/教科書/政府出版品、影視偶像、國中小參考書
+商業理財、藝術設計、人文社科、自然科普、心理勵志、醫療保健、飲食、生活風格、旅遊、宗教命理、親子教養、童書/青少年文學、語言學習、考試用書、電腦資訊、專業/教科書/政府出版品、國中小參考書
 
 ## 安裝
 
@@ -71,23 +72,27 @@ uv run python -m book_craw --no-preorders
 
 # 組合使用
 uv run python -m book_craw --dry-run --category 19 --no-preorders
+
+# 產生靜態 HTML 頁面到指定目錄
+uv run python -m book_craw --pages ./site --dry-run --category 19
+
+# --pages 可與 email 同時使用（爬一次，產頁面 + 寄信）
+uv run python -m book_craw --pages ./site
 ```
 
 ### 分類代碼表
 
 | 代碼 | 分類 | 代碼 | 分類 |
 |------|------|------|------|
-| 01 | 文學小說 | 13 | 親子教養 |
-| 02 | 商業理財 | 14 | 童書/青少年文學 |
-| 03 | 藝術設計 | 15 | 輕小說 |
-| 04 | 人文社科 | 16 | 漫畫/圖文書 |
+| 02 | 商業理財 | 12 | 宗教命理 |
+| 03 | 藝術設計 | 13 | 親子教養 |
+| 04 | 人文社科 | 14 | 童書/青少年文學 |
 | 06 | 自然科普 | 17 | 語言學習 |
 | 07 | 心理勵志 | 18 | 考試用書 |
 | 08 | 醫療保健 | 19 | 電腦資訊 |
 | 09 | 飲食 | 20 | 專業/教科書/政府出版品 |
-| 10 | 生活風格 | 22 | 影視偶像 |
-| 11 | 旅遊 | 24 | 國中小參考書 |
-| 12 | 宗教命理 | | |
+| 10 | 生活風格 | 24 | 國中小參考書 |
+| 11 | 旅遊 | | |
 
 ## 部署到 GitHub Actions
 
@@ -114,6 +119,15 @@ uv run python -m book_craw --dry-run --category 19 --no-preorders
 
 4. 手動測試：到 **Actions** → **Weekly Books Notification** → **Run workflow**
 
+### 啟用 GitHub Pages
+
+Workflow 每次執行會自動將書單靜態頁面推送到 `gh-pages` 分支。要啟用 GitHub Pages：
+
+1. 到 GitHub repo → **Settings** → **Pages**
+2. **Source** 選擇 **Deploy from a branch**
+3. **Branch** 選擇 `gh-pages`，目錄選 `/ (root)`，按 **Save**
+4. 幾分鐘後即可在 `https://<username>.github.io/book-craw/` 瀏覽書單
+
 ### 修改排程
 
 編輯 `.github/workflows/weekly-books.yml` 中的 cron 表達式：
@@ -133,13 +147,14 @@ schedule:
 ```
 book-craw/
 ├── .github/workflows/
-│   └── weekly-books.yml    # GitHub Actions 排程
+│   └── weekly-books.yml    # GitHub Actions 排程 + gh-pages 部署
 ├── src/book_craw/
 │   ├── __init__.py
 │   ├── __main__.py         # python -m book_craw 進入點
 │   ├── config.py           # 分類代碼、URL、常數設定
 │   ├── emailer.py          # HTML 郵件產生與 SMTP 寄送
 │   ├── main.py             # CLI 主程式
+│   ├── pages.py            # 靜態 HTML 頁面產生器（GitHub Pages）
 │   └── scraper.py          # 網頁爬取與解析
 ├── .env.example            # 環境變數範本
 ├── pyproject.toml
