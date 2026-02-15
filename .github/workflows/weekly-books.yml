@@ -21,16 +21,17 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Checkout gh-pages branch
-        run: |
-          if git ls-remote --exit-code --heads origin gh-pages; then
-            git worktree add gh-pages-dir origin/gh-pages
-          else
-            git worktree add --detach gh-pages-dir
-            git -C gh-pages-dir checkout --orphan gh-pages
-            git -C gh-pages-dir rm -rf .
-            git -C gh-pages-dir commit --allow-empty -m "init gh-pages"
-          fi
+      - name: Checkout gh-pages
+        id: gh-pages
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages-dir
+
+      - name: Init gh-pages directory (first run)
+        if: steps.gh-pages.outcome == 'failure'
+        run: mkdir -p gh-pages-dir
 
       - name: Run book-craw (email + pages)
         env:
@@ -42,12 +43,23 @@ jobs:
       - name: Deploy to gh-pages
         run: |
           cd gh-pages-dir
+          # Init git repo if this is the first run (no .git from checkout)
+          if [ ! -d .git ]; then
+            git init
+            git checkout -b gh-pages
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to deploy."
           else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
             git commit -m "Update book list $(date -I)"
+            REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote set-url origin "$REPO_URL"
+            else
+              git remote add origin "$REPO_URL"
+            fi
             git push origin gh-pages
           fi
