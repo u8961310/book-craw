@@ -21,19 +21,14 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Checkout gh-pages
-        id: gh-pages
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          ref: gh-pages
-          path: gh-pages-dir
-
-      - name: Init gh-pages directory (first run)
-        if: steps.gh-pages.outcome == 'failure'
+      - name: Prepare gh-pages directory
         run: |
-          rm -rf gh-pages-dir
-          mkdir -p gh-pages-dir
+          REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --heads "$REPO_URL" gh-pages >/dev/null 2>&1; then
+            git clone --branch gh-pages --single-branch --depth 1 "$REPO_URL" gh-pages-dir
+          else
+            mkdir -p gh-pages-dir
+          fi
 
       - name: Run book-craw (email + pages)
         env:
@@ -45,7 +40,6 @@ jobs:
       - name: Deploy to gh-pages
         run: |
           cd gh-pages-dir
-          # Init git repo if this is the first run (no .git from checkout)
           if [ ! -d .git ]; then
             git init
             git checkout -b gh-pages
