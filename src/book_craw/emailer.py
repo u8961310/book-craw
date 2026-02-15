@@ -20,6 +20,9 @@ def build_html(books_by_category: dict[str, list[Book]]) -> str:
         "<html><head><meta charset='utf-8'></head>",
         "<body style='font-family:sans-serif;max-width:800px;margin:auto;'>",
         "<h1 style='color:#333;'>📚 博客來新書通知</h1>",
+        "<p style='margin-bottom:16px;'>"
+        "<a href='https://u8961310.github.io/book-craw/index.html' "
+        "style='color:#e63946;font-weight:bold;'>線上瀏覽歷史書單</a></p>",
     ]
 
     for category, books in books_by_category.items():
