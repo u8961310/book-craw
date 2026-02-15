@@ -86,6 +86,7 @@ def generate_weekly_page(
             f'<h2 class="cat-title" data-category="{escaped_cat}">'
             f"{escaped_cat}（{len(books)} 本）</h2>"
         )
+        cards.append(f'<div class="grid" data-category="{escaped_cat}">')
         for book in books:
             img_html = ""
             if book.image_url:
@@ -93,8 +94,6 @@ def generate_weekly_page(
                     f'<img src="{book.image_url}" alt="" class="cover">'
                 )
             meta_parts = []
-            if book.pub_date:
-                meta_parts.append(book.pub_date)
             if book.author:
                 meta_parts.append(book.author)
             if book.publisher:
@@ -105,15 +104,20 @@ def generate_weekly_page(
             new_badge = ""
             if prev_titles and book.title not in prev_titles:
                 new_badge = '<span class="badge-new">NEW</span>'
+            date_html = ""
+            if book.pub_date:
+                date_html = f'<span class="pub-date">{book.pub_date}</span>'
             cards.append(
-                f'<div class="card" data-category="{escaped_cat}">'
+                f'<div class="card">'
                 f"{img_html}"
                 f'<div class="card-body">'
                 f'<a href="{book.url}" target="_blank" class="book-title">{html.escape(book.title)}</a>'
                 f"{new_badge}"
                 f'<span class="meta">{html.escape(meta)}</span>'
+                f"{date_html}"
                 f"</div></div>"
             )
+        cards.append("</div>")
 
     json_script = (
         '<script id="book-data" type="application/json">'
@@ -327,13 +331,16 @@ h1{margin-bottom:8px;color:#1d3557}
 .nav-links a{color:#e63946;text-decoration:none;font-weight:600;font-size:15px}
 .nav-links a:hover{text-decoration:underline}
 .cat-title{border-bottom:2px solid #e63946;padding-bottom:4px;margin:32px 0 16px}
-.card{display:flex;background:#fff;border:1px solid #eee;border-radius:6px;
-  padding:12px;margin-bottom:12px;gap:12px}
-.card .cover{width:80px;height:auto;flex-shrink:0;border-radius:3px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.card{display:flex;flex-direction:column;background:#fff;border:1px solid #eee;border-radius:6px;
+  padding:10px;text-align:center}
+.card .cover{width:100%;max-width:140px;height:auto;margin:0 auto 8px;border-radius:3px}
 .card-body{display:flex;flex-direction:column;gap:4px}
-.book-title{font-size:15px;color:#1d3557;text-decoration:none;font-weight:bold}
+.book-title{font-size:14px;color:#1d3557;text-decoration:none;font-weight:bold;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .book-title:hover{text-decoration:underline}
-.meta{font-size:13px;color:#666}
+.meta{font-size:12px;color:#666}
+.pub-date{font-size:11px;color:#999;margin-top:auto}
 .badge-new{display:inline-block;background:#e63946;color:#fff;font-size:11px;
   font-weight:bold;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle}
 .filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
@@ -347,7 +354,6 @@ h1{margin-bottom:8px;color:#1d3557}
 .index-list a{color:#1d3557;text-decoration:none;font-weight:600;font-size:16px}
 .index-list a:hover{color:#e63946}
 @media(max-width:600px){
-  .card{flex-direction:column;align-items:flex-start}
-  .card .cover{width:60px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
   .bar-label{width:80px;font-size:11px}
 }"""
