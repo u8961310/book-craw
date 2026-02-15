@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from book_craw.config import CATEGORIES
 from book_craw.emailer import build_html, send_email
-from book_craw.pages import generate_index_page, generate_weekly_page
+from book_craw.pages import generate_index_page, generate_stats_page, generate_weekly_page
 from book_craw.scraper import scrape_all
 
 
@@ -70,6 +70,7 @@ def main(argv: list[str] | None = None) -> None:
         output_dir = Path(args.pages)
         generate_weekly_page(books_by_category, date.today(), output_dir)
         generate_index_page(output_dir)
+        generate_stats_page(output_dir)
         log.info("Pages generated in %s (%d books).", output_dir, total)
 
     html = build_html(books_by_category)
