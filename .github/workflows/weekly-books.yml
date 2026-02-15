@@ -31,7 +31,9 @@ jobs:
 
       - name: Init gh-pages directory (first run)
         if: steps.gh-pages.outcome == 'failure'
-        run: mkdir -p gh-pages-dir
+        run: |
+          rm -rf gh-pages-dir
+          mkdir -p gh-pages-dir
 
       - name: Run book-craw (email + pages)
         env:
