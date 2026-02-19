@@ -13,8 +13,6 @@ from bs4 import BeautifulSoup
 
 from book_craw.config import (
     CATEGORIES,
-    CHINA_CATEGORIES,
-    CHINA_NEW_BOOKS_URL_TEMPLATE,
     EBOOK_CATEGORIES,
     EBOOK_NEW_URL_TEMPLATE,
     EXTRA_SOURCES,
@@ -298,35 +296,6 @@ def scrape_extra_sources(recent_days: int = 7) -> dict[str, list[Book]]:
     return result
 
 
-def scrape_china_category(code: str) -> list[Book]:
-    """Scrape new books for a single china category (no date filter)."""
-    name = CHINA_CATEGORIES.get(code, code)
-    url = CHINA_NEW_BOOKS_URL_TEMPLATE.format(code=code)
-    log.info("Fetching china category %s (%s): %s", code, name, url)
-    html = fetch_page(url)
-    category = f"簡體-{name}"
-    return _parse_extra_source(
-        html,
-        category=category,
-        keywords=[f"{name}新書", "新書"],
-        apply_date_filter=False,
-    )
-
-
-def scrape_china_categories() -> dict[str, list[Book]]:
-    """Scrape all china categories."""
-    result: dict[str, list[Book]] = {}
-    for code in CHINA_CATEGORIES:
-        name = f"簡體-{CHINA_CATEGORIES[code]}"
-        try:
-            result[name] = scrape_china_category(code)
-        except Exception:
-            log.exception("Failed to scrape china category %s", name)
-            result[name] = []
-        time.sleep(REQUEST_DELAY)
-    return result
-
-
 def scrape_ebook_category(code: str, recent_days: int = 7) -> list[Book]:
     """爬取單一電子中文書新書分類，依出版日期篩選近 N 天。"""
     name = EBOOK_CATEGORIES.get(code, code)
@@ -395,7 +364,6 @@ def scrape_all(
         time.sleep(REQUEST_DELAY)
 
     if include_extra:
-        result.update(scrape_china_categories())
         result.update(scrape_ebook_categories(recent_days=recent_days))
         result.update(scrape_extra_sources(recent_days=recent_days))
 

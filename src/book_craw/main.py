@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--no-extra",
         action="store_true",
-        help="不爬額外來源（簡體書、電子書等）",
+        help="不爬額外來源（電子書等）",
     )
     parser.add_argument(
         "--pages",
