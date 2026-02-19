@@ -83,5 +83,5 @@ USER_AGENT = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
-REQUEST_DELAY = 2.5  # seconds between requests
+REQUEST_DELAY = 4  # seconds between requests
 REQUEST_TIMEOUT = 30  # seconds
