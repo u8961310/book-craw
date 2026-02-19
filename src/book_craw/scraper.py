@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -18,12 +19,35 @@ from book_craw.config import (
     EXTRA_SOURCES,
     NEW_BOOKS_URL_TEMPLATE,
     PREORDER_URL,
-    REQUEST_DELAY,
+    REQUEST_DELAY_MAX,
+    REQUEST_DELAY_MIN,
+    REQUEST_HEADERS,
+    REQUEST_MAX_RETRIES,
     REQUEST_TIMEOUT,
-    USER_AGENT,
 )
 
 log = logging.getLogger(__name__)
+
+# 全域共用 HTTP client（維持 cookies 與連線池，像正常使用者連續瀏覽）
+_client: httpx.Client | None = None
+
+
+def _get_client() -> httpx.Client:
+    """取得或建立共用的 HTTP client。"""
+    global _client
+    if _client is None:
+        _client = httpx.Client(
+            headers=REQUEST_HEADERS,
+            timeout=REQUEST_TIMEOUT,
+            follow_redirects=True,
+        )
+    return _client
+
+
+def _random_delay() -> None:
+    """隨機等待，模擬人類瀏覽間隔。"""
+    delay = random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX)
+    time.sleep(delay)
 
 
 @dataclass
@@ -39,12 +63,23 @@ class Book:
 
 
 def fetch_page(url: str) -> str:
-    """GET a page and return decoded HTML."""
-    headers = {"User-Agent": USER_AGENT}
-    resp = httpx.get(url, headers=headers, timeout=REQUEST_TIMEOUT, follow_redirects=True)
-    resp.raise_for_status()
-    resp.encoding = "utf-8"
-    return resp.text
+    """GET 頁面並回傳 HTML，失敗時自動重試（指數退避）。"""
+    client = _get_client()
+    for attempt in range(1, REQUEST_MAX_RETRIES + 1):
+        try:
+            resp = client.get(url)
+            resp.raise_for_status()
+            resp.encoding = "utf-8"
+            return resp.text
+        except (httpx.HTTPStatusError, httpx.TransportError) as e:
+            if attempt == REQUEST_MAX_RETRIES:
+                raise
+            # 指數退避：10s, 20s, 40s...
+            wait = 10 * (2 ** (attempt - 1))
+            log.warning("請求失敗 (%s)，%d 秒後重試 (%d/%d): %s",
+                        e, wait, attempt, REQUEST_MAX_RETRIES, url)
+            time.sleep(wait)
+    return ""  # unreachable
 
 
 def _parse_recent_books(html: str, category: str = "") -> list[Book]:
@@ -292,7 +327,7 @@ def scrape_extra_sources(recent_days: int = 7) -> dict[str, list[Book]]:
         except Exception:
             log.exception("Failed to scrape extra source %s", name)
             result[name] = []
-        time.sleep(REQUEST_DELAY)
+        _random_delay()
     return result
 
 
@@ -322,7 +357,7 @@ def scrape_ebook_categories(recent_days: int = 7) -> dict[str, list[Book]]:
         except Exception:
             log.exception("Failed to scrape ebook category %s", name)
             result[name] = []
-        time.sleep(REQUEST_DELAY)
+        _random_delay()
     return result
 
 
@@ -361,7 +396,7 @@ def scrape_all(
         except Exception:
             log.exception("Failed to scrape category %s (%s)", code, name)
             result[name] = []
-        time.sleep(REQUEST_DELAY)
+        _random_delay()
 
     if include_extra:
         result.update(scrape_ebook_categories(recent_days=recent_days))

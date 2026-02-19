@@ -60,5 +60,19 @@ USER_AGENT = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
-REQUEST_DELAY = 5  # seconds between requests
-REQUEST_TIMEOUT = 30  # seconds
+REQUEST_DELAY_MIN = 3  # 隨機間隔下限（秒）
+REQUEST_DELAY_MAX = 6  # 隨機間隔上限（秒）
+REQUEST_TIMEOUT = 30  # 請求逾時（秒）
+REQUEST_MAX_RETRIES = 3  # 被擋時最多重試次數
+
+# 模擬瀏覽器的完整 HTTP headers
+REQUEST_HEADERS: dict[str, str] = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.books.com.tw/",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
