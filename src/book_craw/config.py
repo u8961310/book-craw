@@ -12,7 +12,6 @@ CATEGORIES: dict[str, str] = {
     "11": "旅遊",
     "12": "宗教命理",
     "13": "親子教養",
-    "14": "童書/青少年文學",
     "17": "語言學習",
     "18": "考試用書",
     "19": "電腦資訊",
@@ -41,7 +40,6 @@ CHINA_NEW_BOOKS_URL_TEMPLATE = "https://www.books.com.tw/web/china_nbtopm_{code}
 
 # 電子中文書新書分類（代碼 → 分類名稱）
 EBOOK_CATEGORIES: dict[str, str] = {
-    "01": "文學小說",
     "02": "商業理財",
     "03": "藝術設計",
     "04": "人文社科",
@@ -53,14 +51,10 @@ EBOOK_CATEGORIES: dict[str, str] = {
     "11": "旅遊",
     "12": "宗教命理",
     "13": "親子教養",
-    "14": "童書/青少年文學",
-    "15": "輕小說",
-    "16": "漫畫/圖文書",
     "17": "語言學習",
     "18": "考試用書",
     "19": "電腦資訊",
     "20": "專業/教科書/政府出版品",
-    "22": "影視偶像",
     "24": "國中小參考書",
 }
 EBOOK_NEW_URL_TEMPLATE = "https://www.books.com.tw/web/cebook_new/{code}/"
@@ -89,5 +83,5 @@ USER_AGENT = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
-REQUEST_DELAY = 1.5  # seconds between requests
+REQUEST_DELAY = 2.5  # seconds between requests
 REQUEST_TIMEOUT = 30  # seconds
