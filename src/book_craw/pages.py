@@ -9,6 +9,7 @@ import re
 from datetime import date
 from pathlib import Path
 
+from book_craw.config import CATEGORY_GROUPS
 from book_craw.scraper import Book
 
 log = logging.getLogger(__name__)
@@ -26,15 +27,15 @@ def _book_to_dict(book: Book) -> dict:
     }
 
 
-def _load_previous_titles(output_dir: Path, current_date_str: str) -> set[str]:
-    """讀取前一期 HTML 的 book-data JSON，回傳書名集合。"""
+def _load_previous_data(output_dir: Path, current_date_str: str) -> dict[str, list[dict]] | None:
+    """讀取前一期 HTML 的 book-data JSON，回傳原始資料。"""
     books_dir = output_dir / "books"
     if not books_dir.exists():
-        return set()
+        return None
     htmls = sorted(books_dir.glob("*.html"))
     prev_files = [f for f in htmls if f.stem < current_date_str]
     if not prev_files:
-        return set()
+        return None
     prev_html = prev_files[-1].read_text(encoding="utf-8")
     m = re.search(
         r'<script id="book-data" type="application/json">(.*?)</script>',
@@ -42,8 +43,23 @@ def _load_previous_titles(output_dir: Path, current_date_str: str) -> set[str]:
         re.DOTALL,
     )
     if not m:
+        return None
+    return json.loads(m.group(1))
+
+
+def load_previous_urls(output_dir: Path, current_date_str: str) -> set[str]:
+    """回傳前一期所有書籍的 URL（去除 query string），用於去重。"""
+    data = _load_previous_data(output_dir, current_date_str)
+    if not data:
         return set()
-    data: dict[str, list[dict]] = json.loads(m.group(1))
+    return {b["url"].split("?")[0] for books in data.values() for b in books}
+
+
+def _load_previous_titles(output_dir: Path, current_date_str: str) -> set[str]:
+    """回傳前一期所有書籍的書名集合，用於 NEW 標記。"""
+    data = _load_previous_data(output_dir, current_date_str)
+    if not data:
+        return set()
     return {b["title"] for books in data.values() for b in books}
 
 
@@ -65,28 +81,31 @@ def generate_weekly_page(
     # 載入前一期書名做 NEW 比對
     prev_titles = _load_previous_titles(output_dir, date_str)
 
-    # 收集分類名稱（有書的）
-    categories = [c for c, b in books_by_category.items() if b]
-
-    # 分類篩選按鈕
+    # 建立群組篩選按鈕（只顯示有書的群組）
     filter_buttons = ['<button class="filter-btn active" data-cat="all">全部</button>']
-    for cat in categories:
-        escaped = html.escape(cat, quote=True)
-        filter_buttons.append(
-            f'<button class="filter-btn" data-cat="{escaped}">{escaped}</button>'
+    grouped_cats: set[str] = set()
+    for group_name, members in CATEGORY_GROUPS:
+        grouped_cats.update(members)
+        group_has_books = any(
+            c in books_by_category and books_by_category[c] for c in members
         )
+        if group_has_books:
+            escaped = html.escape(group_name, quote=True)
+            filter_buttons.append(
+                f'<button class="filter-btn" data-cat="{escaped}">{escaped}</button>'
+            )
     filter_bar = f'<div class="filter-bar">{"".join(filter_buttons)}</div>'
 
     cards: list[str] = []
-    for category, books in books_by_category.items():
-        if not books:
-            continue
+
+    def _render_books(category: str, books: list[Book], group_name: str) -> None:
         escaped_cat = html.escape(category, quote=True)
+        escaped_grp = html.escape(group_name, quote=True)
         cards.append(
-            f'<h2 class="cat-title" data-category="{escaped_cat}">'
-            f"{escaped_cat}（{len(books)} 本）</h2>"
+            f'<h3 class="sub-cat-title" data-group="{escaped_grp}">'
+            f"{escaped_cat}（{len(books)} 本）</h3>"
         )
-        cards.append(f'<div class="grid" data-category="{escaped_cat}">')
+        cards.append(f'<div class="grid" data-group="{escaped_grp}">')
         for book in books:
             img_html = ""
             if book.image_url:
@@ -119,6 +138,27 @@ def generate_weekly_page(
             )
         cards.append("</div>")
 
+    for group_name, members in CATEGORY_GROUPS:
+        group_cats = [(c, books_by_category[c]) for c in members
+                      if c in books_by_category and books_by_category[c]]
+        if not group_cats:
+            continue
+        group_total = sum(len(b) for _, b in group_cats)
+        escaped_grp = html.escape(group_name, quote=True)
+        cards.append(
+            f'<h2 class="group-title" data-group="{escaped_grp}">'
+            f"{escaped_grp}"
+            f'<span class="group-count">共 {group_total} 本</span></h2>'
+        )
+        for category, books in group_cats:
+            _render_books(category, books, group_name)
+
+    # 未分群的分類
+    for category, books in books_by_category.items():
+        if not books or category in grouped_cats:
+            continue
+        _render_books(category, books, category)
+
     json_script = (
         '<script id="book-data" type="application/json">'
         + html.escape(json.dumps(json_data, ensure_ascii=False), quote=False)
@@ -133,8 +173,8 @@ def generate_weekly_page(
       btns.forEach(function(b){b.classList.remove('active')});
       btn.classList.add('active');
       var cat=btn.getAttribute('data-cat');
-      document.querySelectorAll('[data-category]').forEach(function(el){
-        el.style.display=(cat==='all'||el.getAttribute('data-category')===cat)?'':'none';
+      document.querySelectorAll('[data-group]').forEach(function(el){
+        el.style.display=(cat==='all'||el.getAttribute('data-group')===cat)?'':'none';
       });
     });
   });
@@ -244,34 +284,136 @@ def generate_stats_page(output_dir: Path) -> Path:
             category_totals[cat] = category_totals.get(cat, 0) + count
         weekly_stats.append((f.stem, week_total))
 
+    # 彙總數據
     total_weeks = len(weekly_stats)
     total_books = sum(c for _, c in weekly_stats)
-    max_weekly = max((c for _, c in weekly_stats), default=1) or 1
+    latest_count = weekly_stats[-1][1] if weekly_stats else 0
+    # 計算有書的群組數量
+    group_count = sum(
+        1 for _, members in CATEGORY_GROUPS
+        if any(c in category_totals for c in members)
+    )
 
-    # 每期書籍數量長條圖
-    weekly_bars: list[str] = []
-    for date_str, count in weekly_stats:
-        pct = count / max_weekly * 100
-        weekly_bars.append(
+    # --- 1. 摘要卡片（頂部 4 個數字卡片橫排） ---
+    summary_cards = (
+        '<div class="stats-cards">'
+        f'<div class="stat-card"><span class="stat-value">{total_weeks}</span>'
+        f'<span class="stat-label">總期數</span></div>'
+        f'<div class="stat-card"><span class="stat-value">{total_books}</span>'
+        f'<span class="stat-label">總書數</span></div>'
+        f'<div class="stat-card"><span class="stat-value">{latest_count}</span>'
+        f'<span class="stat-label">本期新增</span></div>'
+        f'<div class="stat-card"><span class="stat-value">{group_count}</span>'
+        f'<span class="stat-label">群組數量</span></div>'
+        '</div>'
+    )
+
+    # --- 2. 群組級統計長條圖（用 CATEGORY_GROUPS 聚合各群組合計） ---
+    group_colors = ["#1d3557", "#e63946", "#457b9d", "#2a9d8f", "#e9c46a", "#f4a261"]
+    group_totals: list[tuple[str, int, str]] = []  # (群組名, 合計, 顏色)
+    for idx, (group_name, members) in enumerate(CATEGORY_GROUPS):
+        gtotal = sum(category_totals.get(c, 0) for c in members)
+        if gtotal > 0:
+            color = group_colors[idx % len(group_colors)]
+            group_totals.append((group_name, gtotal, color))
+
+    max_group = max((t for _, t, _ in group_totals), default=1) or 1
+    group_bars: list[str] = []
+    for gname, gtotal, gcolor in group_totals:
+        pct = gtotal / max_group * 100
+        group_bars.append(
             f'<div class="bar-row">'
-            f'<span class="bar-label">{date_str}</span>'
-            f'<div class="bar-track"><div class="bar-fill" style="width:{pct:.1f}%"></div></div>'
-            f'<span class="bar-value">{count}</span>'
+            f'<span class="bar-label">{html.escape(gname)}</span>'
+            f'<div class="bar-track"><div class="bar-fill" style="width:{pct:.1f}%;background:{gcolor}"></div></div>'
+            f'<span class="bar-value">{gtotal}</span>'
             f"</div>"
         )
 
-    # 分類累計排行
-    sorted_cats = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
-    max_cat = sorted_cats[0][1] if sorted_cats else 1
-    cat_bars: list[str] = []
-    for cat, count in sorted_cats:
-        pct = count / max_cat * 100
-        cat_bars.append(
-            f'<div class="bar-row">'
-            f'<span class="bar-label">{html.escape(cat)}</span>'
-            f'<div class="bar-track"><div class="bar-fill cat-fill" style="width:{pct:.1f}%"></div></div>'
-            f'<span class="bar-value">{count}</span>'
-            f"</div>"
+    # --- 3. 群組內子分類排行（按群組分區，跳過只有 1 個子分類的群組） ---
+    group_sections: list[str] = []
+    for idx, (group_name, members) in enumerate(CATEGORY_GROUPS):
+        # 收集該群組內有資料的子分類
+        sub_cats = [(c, category_totals[c]) for c in members if c in category_totals and category_totals[c] > 0]
+        if not sub_cats or len(sub_cats) <= 1:
+            continue
+        # 依數量降冪排序，長條比例相對於群組內最大值
+        sub_cats.sort(key=lambda x: x[1], reverse=True)
+        local_max = sub_cats[0][1]
+        color = group_colors[idx % len(group_colors)]
+        bars: list[str] = []
+        for cat, count in sub_cats:
+            pct = count / local_max * 100
+            bars.append(
+                f'<div class="bar-row">'
+                f'<span class="bar-label">{html.escape(cat)}</span>'
+                f'<div class="bar-track"><div class="bar-fill" style="width:{pct:.1f}%;background:{color}"></div></div>'
+                f'<span class="bar-value">{count}</span>'
+                f"</div>"
+            )
+        group_sections.append(
+            f'<h3 class="group-title">{html.escape(group_name)}</h3>'
+            f'<div class="chart">{"".join(bars)}</div>'
+        )
+
+    # --- 4. 每期趨勢折線圖（SVG polyline，只有 1 期時退化成長條圖） ---
+    trend_html: str
+    if len(weekly_stats) <= 1:
+        # 只有 1 期時改用長條圖顯示
+        bars_list: list[str] = []
+        for date_str, count in weekly_stats:
+            bars_list.append(
+                f'<div class="bar-row">'
+                f'<span class="bar-label">{date_str}</span>'
+                f'<div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>'
+                f'<span class="bar-value">{count}</span>'
+                f"</div>"
+            )
+        trend_html = f'<div class="chart">{"".join(bars_list)}</div>'
+    else:
+        # 多期時用 SVG 折線圖
+        svg_w, svg_h = 800, 300
+        pad_l, pad_r, pad_t, pad_b = 50, 30, 30, 60  # 左右上下邊距
+        chart_w = svg_w - pad_l - pad_r
+        chart_h = svg_h - pad_t - pad_b
+        n = len(weekly_stats)
+        max_val = max(c for _, c in weekly_stats) or 1
+
+        # 計算各資料點的 SVG 座標
+        points: list[tuple[float, float]] = []
+        for i, (_, count) in enumerate(weekly_stats):
+            x = pad_l + (i / (n - 1)) * chart_w
+            y = pad_t + chart_h - (count / max_val) * chart_h
+            points.append((x, y))
+
+        polyline_pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+
+        # Y 軸水平格線（分 4 等份）
+        grid_lines: list[str] = []
+        for j in range(5):
+            gy = pad_t + chart_h * j / 4
+            gval = int(max_val * (4 - j) / 4)
+            grid_lines.append(
+                f'<line x1="{pad_l}" y1="{gy:.1f}" x2="{svg_w - pad_r}" y2="{gy:.1f}" stroke="#e0e0e0" stroke-dasharray="4"/>'
+                f'<text x="{pad_l - 8}" y="{gy:.1f}" text-anchor="end" dy="4" fill="#999" font-size="11">{gval}</text>'
+            )
+
+        # 資料點（圓點）、數值標籤、X 軸日期標籤
+        dots: list[str] = []
+        labels: list[str] = []
+        x_labels: list[str] = []
+        for i, ((date_str, count), (x, y)) in enumerate(zip(weekly_stats, points)):
+            dots.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="#e63946"/>')
+            labels.append(f'<text x="{x:.1f}" y="{y:.1f}" dy="-10" text-anchor="middle" fill="#333" font-size="11" font-weight="bold">{count}</text>')
+            # X 軸日期標籤（旋轉 -35° 避免重疊）
+            x_labels.append(f'<text x="{x:.1f}" y="{svg_h - 5}" text-anchor="end" fill="#666" font-size="10" transform="rotate(-35 {x:.1f} {svg_h - 5})">{date_str}</text>')
+
+        trend_html = (
+            f'<div class="trend-chart">'
+            f'<svg viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg">'
+            f'{"".join(grid_lines)}'
+            f'<polyline points="{polyline_pts}" fill="none" stroke="#1d3557" stroke-width="2.5" stroke-linejoin="round"/>'
+            f'{"".join(dots)}{"".join(labels)}{"".join(x_labels)}'
+            f'</svg></div>'
         )
 
     page_html = f"""<!DOCTYPE html>
@@ -289,13 +431,17 @@ def generate_stats_page(output_dir: Path) -> Path:
 <div class="container">
   <a href="index.html" class="back-link">&larr; 返回首頁</a>
   <h1>書單統計</h1>
-  <p class="summary">共 {total_weeks} 期，{total_books} 本書</p>
 
-  <h2 class="cat-title">每期書籍數量</h2>
-  <div class="chart">{"".join(weekly_bars)}</div>
+  {summary_cards}
 
-  <h2 class="cat-title">各分類累計書籍數量</h2>
-  <div class="chart">{"".join(cat_bars)}</div>
+  <h2 class="cat-title">每期書籍趨勢</h2>
+  {trend_html}
+
+  <h2 class="cat-title">各群組累計書籍數量</h2>
+  <div class="chart">{"".join(group_bars)}</div>
+
+  <h2 class="cat-title">群組內子分類排行</h2>
+  {"".join(group_sections)}
 </div>
 </body>
 </html>"""
@@ -307,14 +453,26 @@ def generate_stats_page(output_dir: Path) -> Path:
 
 
 def _stats_css() -> str:
+    """統計頁面專用 CSS：摘要卡片、長條圖、SVG 折線圖、RWD 手機版。"""
     return """\
+.stats-cards{display:flex;gap:16px;margin-bottom:32px;flex-wrap:wrap}
+.stat-card{flex:1;min-width:120px;background:#fff;border:1px solid #eee;border-radius:8px;
+  padding:20px 16px;text-align:center;display:flex;flex-direction:column;gap:4px}
+.stat-value{font-size:32px;font-weight:bold;color:#1d3557;line-height:1.2}
+.stat-label{font-size:13px;color:#888}
 .chart{margin-bottom:32px}
 .bar-row{display:flex;align-items:center;margin-bottom:6px;gap:8px}
-.bar-label{width:120px;flex-shrink:0;font-size:13px;text-align:right;color:#555}
+.bar-label{width:160px;flex-shrink:0;font-size:13px;text-align:right;color:#555}
 .bar-track{flex:1;background:#eee;border-radius:4px;height:22px;overflow:hidden}
 .bar-fill{height:100%;background:#1d3557;border-radius:4px;transition:width .3s}
-.bar-fill.cat-fill{background:#e63946}
-.bar-value{width:40px;font-size:13px;color:#555}"""
+.bar-value{width:48px;font-size:13px;color:#555}
+.trend-chart{margin-bottom:32px}
+.trend-chart svg{width:100%;height:auto;background:#fff;border:1px solid #eee;border-radius:8px}
+@media(max-width:600px){
+  .stats-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat-value{font-size:24px}
+  .bar-label{width:100px;font-size:11px}
+}"""
 
 
 def _css() -> str:
@@ -330,6 +488,9 @@ h1{margin-bottom:8px;color:#1d3557}
 .nav-links{margin-bottom:16px}
 .nav-links a{color:#e63946;text-decoration:none;font-weight:600;font-size:15px}
 .nav-links a:hover{text-decoration:underline}
+.group-title{background:#1d3557;color:#fff;padding:10px 16px;border-radius:6px;margin:32px 0 12px;font-size:18px}
+.group-count{font-size:13px;color:#a8dadc;margin-left:10px;font-weight:normal}
+.sub-cat-title{border-bottom:2px solid #e63946;padding-bottom:4px;margin:20px 0 12px;font-size:16px}
 .cat-title{border-bottom:2px solid #e63946;padding-bottom:4px;margin:32px 0 16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:24px}
 .card{display:flex;flex-direction:column;background:#fff;border:1px solid #eee;border-radius:6px;

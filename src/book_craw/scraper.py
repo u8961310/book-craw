@@ -13,6 +13,9 @@ from bs4 import BeautifulSoup
 
 from book_craw.config import (
     CATEGORIES,
+    CHINA_CATEGORIES,
+    CHINA_NEW_BOOKS_URL_TEMPLATE,
+    EXTRA_SOURCES,
     NEW_BOOKS_URL_TEMPLATE,
     PREORDER_URL,
     REQUEST_DELAY,
@@ -145,6 +148,184 @@ def _filter_recent(books: list[Book], days: int = 7) -> list[Book]:
     return result
 
 
+_EXTRA_SOURCE_CONFIG: dict[str, dict] = {
+    "電子中文書新書": {"keywords": ["新上架"], "date_filter": True},
+    "簡體電子書新書": {"keywords": ["最新上架"], "date_filter": False},
+}
+
+
+def _parse_extra_source(
+    html: str,
+    category: str,
+    keywords: list[str],
+    apply_date_filter: bool,
+    recent_days: int = 7,
+) -> list[Book]:
+    """Parse books from an extra source page by section keywords."""
+    soup = BeautifulSoup(html, "lxml")
+
+    # Find sections matching keywords
+    sections = []
+    for h3 in soup.find_all("h3"):
+        text = h3.get_text(strip=True)
+        if any(kw in text for kw in keywords):
+            parent = h3.find_parent("div", class_=re.compile(r"^mod"))
+            if parent:
+                sections.append(parent)
+
+    if not sections:
+        log.warning("No section found for keywords %s (category=%s)", keywords, category)
+        return []
+
+    # Pick the section with the most items
+    best = max(sections, key=lambda s: len(s.find_all(["li", "div"], class_="item")))
+
+    items = best.find_all(["li", "div"], class_="item")
+    books: list[Book] = []
+    seen_urls: set[str] = set()
+
+    for item in items:
+        # Title & URL
+        h4 = item.find("h4")
+        if not h4:
+            continue
+        link = h4.find("a", href=re.compile(r"/products/"))
+        if not link:
+            continue
+        title = link.get_text(strip=True)
+        href = link["href"]
+        if not href.startswith("http"):
+            href = "https://www.books.com.tw" + href
+
+        # Deduplicate (carousel pages may repeat items)
+        clean_url = href.split("?")[0]
+        if clean_url in seen_urls:
+            continue
+        seen_urls.add(clean_url)
+
+        # Author — support both adv_author and /f/author
+        author = ""
+        author_link = item.find("a", href=re.compile(r"(adv_author|/f/author)"))
+        if author_link:
+            author = author_link.get_text(strip=True)
+
+        # Publisher & pub date from li.info (cebook_new has these)
+        publisher = ""
+        pub_date = ""
+        info_li = item.find("li", class_="info")
+        if info_li:
+            pub_link = info_li.find("a", href=re.compile(r"pubid"))
+            if pub_link:
+                publisher = pub_link.get_text(strip=True)
+            info_text = info_li.get_text()
+            m = re.search(r"出版日期：(\d{4}-\d{2}-\d{2})", info_text)
+            if m:
+                pub_date = m.group(1)
+
+        # Price — try price_box first, then price_a, then whole item
+        price = ""
+        price_el = (
+            item.find("div", class_="price_box")
+            or item.find("li", class_="price_a")
+            or item
+        )
+        price_text = price_el.get_text()
+        m = re.search(r"(\d+)\s*折\s*(\d+)\s*元", price_text)
+        if m:
+            price = f"{m.group(1)}折 {m.group(2)}元"
+        else:
+            m = re.search(r"(\d+)\s*元", price_text)
+            if m:
+                price = f"{m.group(1)}元"
+
+        # Cover image
+        image_url = ""
+        img = item.find("img", class_="cover")
+        if img and img.get("src"):
+            image_url = img["src"]
+            if image_url.startswith("//"):
+                image_url = "https:" + image_url
+
+        books.append(
+            Book(
+                title=title,
+                url=href,
+                author=author,
+                publisher=publisher,
+                price=price,
+                image_url=image_url,
+                category=category,
+                pub_date=pub_date,
+            )
+        )
+
+    log.info("Parsed %d books from %s (category=%s)", len(books), keywords, category)
+
+    if apply_date_filter:
+        books = _filter_recent(books, days=recent_days)
+
+    return books
+
+
+def scrape_extra_source(name: str, url: str, recent_days: int = 7) -> list[Book]:
+    """Scrape a single extra source."""
+    cfg = _EXTRA_SOURCE_CONFIG.get(name)
+    if not cfg:
+        log.error("No config for extra source: %s", name)
+        return []
+    log.info("Fetching extra source %s: %s", name, url)
+    html = fetch_page(url)
+    return _parse_extra_source(
+        html,
+        category=name,
+        keywords=cfg["keywords"],
+        apply_date_filter=cfg["date_filter"],
+        recent_days=recent_days,
+    )
+
+
+def scrape_extra_sources(recent_days: int = 7) -> dict[str, list[Book]]:
+    """Scrape all extra sources."""
+    result: dict[str, list[Book]] = {}
+    for name, url in EXTRA_SOURCES.items():
+        try:
+            result[name] = scrape_extra_source(name, url, recent_days=recent_days)
+        except Exception:
+            log.exception("Failed to scrape extra source %s", name)
+            result[name] = []
+        time.sleep(REQUEST_DELAY)
+    return result
+
+
+def scrape_china_category(code: str) -> list[Book]:
+    """Scrape new books for a single china category (no date filter)."""
+    name = CHINA_CATEGORIES.get(code, code)
+    url = CHINA_NEW_BOOKS_URL_TEMPLATE.format(code=code)
+    log.info("Fetching china category %s (%s): %s", code, name, url)
+    html = fetch_page(url)
+    category = f"簡體-{name}"
+    return _parse_extra_source(
+        html,
+        category=category,
+        keywords=[f"{name}新書", "新書"],
+        apply_date_filter=False,
+    )
+
+
+def scrape_china_categories() -> dict[str, list[Book]]:
+    """Scrape all china categories."""
+    result: dict[str, list[Book]] = {}
+    for code in CHINA_CATEGORIES:
+        name = f"簡體-{CHINA_CATEGORIES[code]}"
+        try:
+            result[name] = scrape_china_category(code)
+        except Exception:
+            log.exception("Failed to scrape china category %s", name)
+            result[name] = []
+        time.sleep(REQUEST_DELAY)
+    return result
+
+
 def scrape_category(code: str, recent_days: int = 7) -> list[Book]:
     """Scrape new books for a single category, filtered to last N days."""
     name = CATEGORIES.get(code, code)
@@ -166,9 +347,10 @@ def scrape_preorders() -> list[Book]:
 def scrape_all(
     categories: list[str] | None = None,
     include_preorders: bool = True,
+    include_extra: bool = True,
     recent_days: int = 7,
 ) -> dict[str, list[Book]]:
-    """Scrape all (or selected) categories plus pre-orders."""
+    """Scrape all (or selected) categories, extra sources, and pre-orders."""
     codes = categories or list(CATEGORIES.keys())
     result: dict[str, list[Book]] = {}
 
@@ -180,6 +362,10 @@ def scrape_all(
             log.exception("Failed to scrape category %s (%s)", code, name)
             result[name] = []
         time.sleep(REQUEST_DELAY)
+
+    if include_extra:
+        result.update(scrape_china_categories())
+        result.update(scrape_extra_sources(recent_days=recent_days))
 
     if include_preorders:
         try:

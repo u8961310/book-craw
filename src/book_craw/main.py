@@ -10,9 +10,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from book_craw.config import CATEGORIES
+from book_craw.config import CATEGORIES, DEDUP_CATEGORIES
 from book_craw.emailer import build_html, send_email
-from book_craw.pages import generate_index_page, generate_stats_page, generate_weekly_page
+from book_craw.pages import generate_index_page, generate_stats_page, generate_weekly_page, load_previous_urls
 from book_craw.scraper import scrape_all
 
 
@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> None:
         "--no-preorders",
         action="store_true",
         help="不爬預購書",
+    )
+    parser.add_argument(
+        "--no-extra",
+        action="store_true",
+        help="不爬額外來源（簡體書、電子書等）",
     )
     parser.add_argument(
         "--pages",
@@ -59,7 +64,23 @@ def main(argv: list[str] | None = None) -> None:
     books_by_category = scrape_all(
         categories=args.category,
         include_preorders=not args.no_preorders,
+        include_extra=not args.no_extra,
     )
+
+    # 去重：只對沒有日期過濾的來源，移除上期已出現的書籍
+    if args.pages:
+        prev_urls = load_previous_urls(Path(args.pages), date.today().isoformat())
+        if prev_urls:
+            before = sum(len(v) for v in books_by_category.values())
+            for cat in books_by_category:
+                if cat not in DEDUP_CATEGORIES:
+                    continue
+                books_by_category[cat] = [
+                    b for b in books_by_category[cat]
+                    if b.url.split("?")[0] not in prev_urls
+                ]
+            after = sum(len(v) for v in books_by_category.values())
+            log.info("Dedup: %d → %d books (%d removed)", before, after, before - after)
 
     total = sum(len(v) for v in books_by_category.values())
     if total == 0:

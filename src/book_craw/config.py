@@ -23,6 +23,42 @@ CATEGORIES: dict[str, str] = {
 NEW_BOOKS_URL_TEMPLATE = "https://www.books.com.tw/web/books_nbtopm_{code}"
 PREORDER_URL = "https://www.books.com.tw/web/sys_prebooks/books/"
 
+CHINA_CATEGORIES: dict[str, str] = {
+    "02": "藝術設計",
+    "03": "史地",
+    "04": "社會科學",
+    "05": "哲學/宗教",
+    "06": "商業理財",
+    "07": "語言學習",
+    "08": "醫療保健",
+    "09": "旅遊/休閒/飲食/手作",
+    "10": "自然科普與應用科學",
+    "11": "電腦資訊",
+    "12": "童書/親子教養",
+    "13": "考試/教輔",
+}
+CHINA_NEW_BOOKS_URL_TEMPLATE = "https://www.books.com.tw/web/china_nbtopm_{code}/"
+
+EXTRA_SOURCES: dict[str, str] = {
+    "電子中文書新書": "https://www.books.com.tw/web/cebook_new",
+    "簡體電子書新書": "https://www.books.com.tw/web/cebook_china",
+}
+
+CATEGORY_GROUPS: list[tuple[str, list[str]]] = [
+    ("中文書新書", list(CATEGORIES.values())),
+    ("簡體書新書", [f"簡體-{v}" for v in CHINA_CATEGORIES.values()]),
+
+    ("電子中文書新書", ["電子中文書新書"]),
+    ("簡體電子書新書", ["簡體電子書新書"]),
+    ("預購書", ["預購書"]),
+]
+
+# 需要跨期去重的分類（沒有日期過濾的來源）
+DEDUP_CATEGORIES: set[str] = (
+    {f"簡體-{v}" for v in CHINA_CATEGORIES.values()}
+    | {"簡體電子書新書"}
+)
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
