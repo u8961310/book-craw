@@ -22,32 +22,10 @@ CATEGORIES: dict[str, str] = {
 NEW_BOOKS_URL_TEMPLATE = "https://www.books.com.tw/web/books_nbtopm_{code}"
 PREORDER_URL = "https://www.books.com.tw/web/sys_prebooks/books/"
 
-# 電子中文書新書分類（代碼 → 分類名稱）
-EBOOK_CATEGORIES: dict[str, str] = {
-    "02": "商業理財",
-    "03": "藝術設計",
-    "04": "人文社科",
-    "06": "自然科普",
-    "07": "心理勵志",
-    "08": "醫療保健",
-    "09": "飲食",
-    "10": "生活風格",
-    "11": "旅遊",
-    "12": "宗教命理",
-    "13": "親子教養",
-    "17": "語言學習",
-    "18": "考試用書",
-    "19": "電腦資訊",
-    "20": "專業/教科書/政府出版品",
-    "24": "國中小參考書",
-}
-EBOOK_NEW_URL_TEMPLATE = "https://www.books.com.tw/web/cebook_new/{code}/"
-
 EXTRA_SOURCES: dict[str, str] = {}
 
 CATEGORY_GROUPS: list[tuple[str, list[str]]] = [
     ("中文書新書", list(CATEGORIES.values())),
-    ("電子中文書新書", [f"電子書-{v}" for v in EBOOK_CATEGORIES.values()]),
     ("預購書", ["預購書"]),
 ]
 

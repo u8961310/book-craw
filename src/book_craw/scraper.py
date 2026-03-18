@@ -14,8 +14,6 @@ from bs4 import BeautifulSoup
 
 from book_craw.config import (
     CATEGORIES,
-    EBOOK_CATEGORIES,
-    EBOOK_NEW_URL_TEMPLATE,
     EXTRA_SOURCES,
     NEW_BOOKS_URL_TEMPLATE,
     PREORDER_URL,
@@ -331,35 +329,6 @@ def scrape_extra_sources(recent_days: int = 7) -> dict[str, list[Book]]:
     return result
 
 
-def scrape_ebook_category(code: str, recent_days: int = 7) -> list[Book]:
-    """爬取單一電子中文書新書分類，依出版日期篩選近 N 天。"""
-    name = EBOOK_CATEGORIES.get(code, code)
-    url = EBOOK_NEW_URL_TEMPLATE.format(code=code)
-    log.info("Fetching ebook category %s (%s): %s", code, name, url)
-    html_text = fetch_page(url)
-    category = f"電子書-{name}"
-    return _parse_extra_source(
-        html_text,
-        category=category,
-        keywords=["新上架"],
-        apply_date_filter=True,
-        recent_days=recent_days,
-    )
-
-
-def scrape_ebook_categories(recent_days: int = 7) -> dict[str, list[Book]]:
-    """爬取所有電子中文書新書分類。"""
-    result: dict[str, list[Book]] = {}
-    for code in EBOOK_CATEGORIES:
-        name = f"電子書-{EBOOK_CATEGORIES[code]}"
-        try:
-            result[name] = scrape_ebook_category(code, recent_days=recent_days)
-        except Exception:
-            log.exception("Failed to scrape ebook category %s", name)
-            result[name] = []
-        _random_delay()
-    return result
-
 
 def scrape_category(code: str, recent_days: int = 7) -> list[Book]:
     """Scrape new books for a single category, filtered to last N days."""
@@ -399,7 +368,6 @@ def scrape_all(
         _random_delay()
 
     if include_extra:
-        result.update(scrape_ebook_categories(recent_days=recent_days))
         result.update(scrape_extra_sources(recent_days=recent_days))
 
     if include_preorders:
