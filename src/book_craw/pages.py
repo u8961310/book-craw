@@ -81,19 +81,27 @@ def generate_weekly_page(
     # 載入前一期書名做 NEW 比對
     prev_titles = _load_previous_titles(output_dir, date_str)
 
-    # 建立群組篩選按鈕（只顯示有書的群組）
-    filter_buttons = ['<button class="filter-btn active" data-cat="all">全部</button>']
+    # 細分類篩選按鈕（依當期實際有書的分類動態渲染）
     grouped_cats: set[str] = set()
-    for group_name, members in CATEGORY_GROUPS:
+    cat_order: list[str] = []  # 依 CATEGORY_GROUPS 順序排
+    for _, members in CATEGORY_GROUPS:
         grouped_cats.update(members)
-        group_has_books = any(
-            c in books_by_category and books_by_category[c] for c in members
+        for c in members:
+            if c in books_by_category and books_by_category[c] and c not in cat_order:
+                cat_order.append(c)
+    # 補上未分群但有書的分類
+    for c in books_by_category:
+        if books_by_category[c] and c not in grouped_cats and c not in cat_order:
+            cat_order.append(c)
+
+    filter_buttons = ['<button class="filter-btn active" data-cat="all">全部</button>']
+    for c in cat_order:
+        escaped = html.escape(c, quote=True)
+        count = len(books_by_category[c])
+        filter_buttons.append(
+            f'<button class="filter-btn" data-cat="{escaped}">'
+            f'{escaped}<span class="filter-count">{count}</span></button>'
         )
-        if group_has_books:
-            escaped = html.escape(group_name, quote=True)
-            filter_buttons.append(
-                f'<button class="filter-btn" data-cat="{escaped}">{escaped}</button>'
-            )
     filter_bar = f'<div class="filter-bar">{"".join(filter_buttons)}</div>'
 
     cards: list[str] = []
@@ -102,10 +110,10 @@ def generate_weekly_page(
         escaped_cat = html.escape(category, quote=True)
         escaped_grp = html.escape(group_name, quote=True)
         cards.append(
-            f'<h3 class="sub-cat-title" data-group="{escaped_grp}">'
+            f'<h3 class="sub-cat-title" data-cat="{escaped_cat}" data-group="{escaped_grp}">'
             f"{escaped_cat}（{len(books)} 本）</h3>"
         )
-        cards.append(f'<div class="grid" data-group="{escaped_grp}">')
+        cards.append(f'<div class="grid" data-cat="{escaped_cat}" data-group="{escaped_grp}">')
         for book in books:
             img_html = ""
             if book.image_url:
@@ -173,8 +181,14 @@ def generate_weekly_page(
       btns.forEach(function(b){b.classList.remove('active')});
       btn.classList.add('active');
       var cat=btn.getAttribute('data-cat');
-      document.querySelectorAll('[data-group]').forEach(function(el){
-        el.style.display=(cat==='all'||el.getAttribute('data-group')===cat)?'':'none';
+      // 細分類元素：標 data-cat 的 h3 與 grid
+      document.querySelectorAll('[data-cat]').forEach(function(el){
+        if(el.classList.contains('filter-btn')) return;
+        el.style.display=(cat==='all'||el.getAttribute('data-cat')===cat)?'':'none';
+      });
+      // 群組標題：只在「全部」時顯示，篩單一分類時隱藏
+      document.querySelectorAll('.group-title').forEach(function(el){
+        el.style.display=(cat==='all')?'':'none';
       });
     });
   });
@@ -505,10 +519,14 @@ h1{margin-bottom:8px;color:#1d3557}
 .badge-new{display:inline-block;background:#e63946;color:#fff;font-size:11px;
   font-weight:bold;padding:1px 6px;border-radius:3px;margin-left:6px;vertical-align:middle}
 .filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
-.filter-btn{border:1px solid #1d3557;background:#fff;color:#1d3557;padding:4px 14px;
+.filter-btn{display:inline-flex;align-items:center;gap:6px;
+  border:1px solid #1d3557;background:#fff;color:#1d3557;padding:4px 12px;
   border-radius:16px;cursor:pointer;font-size:13px;transition:all .2s}
 .filter-btn:hover{background:#1d3557;color:#fff}
 .filter-btn.active{background:#1d3557;color:#fff}
+.filter-count{display:inline-block;background:rgba(29,53,87,.12);color:inherit;
+  font-size:11px;padding:1px 6px;border-radius:10px;line-height:1.4}
+.filter-btn:hover .filter-count,.filter-btn.active .filter-count{background:rgba(255,255,255,.25)}
 .index-list{list-style:none;padding:0}
 .index-list li{padding:12px 16px;background:#fff;border:1px solid #eee;
   border-radius:6px;margin-bottom:8px}

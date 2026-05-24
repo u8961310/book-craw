@@ -80,6 +80,18 @@ def fetch_page(url: str) -> str:
     return ""  # unreachable
 
 
+def _extract_cover_url(img) -> str:
+    """讀封面網址：博客來改成 lazy-load 後 src 是 base64 placeholder，真網址在 data-original。"""
+    for attr in ("data-original", "data-src", "src"):
+        url = (img.get(attr) or "").strip()
+        if not url or url.startswith("data:"):
+            continue
+        if url.startswith("//"):
+            url = "https:" + url
+        return url
+    return ""
+
+
 def _parse_recent_books(html: str, category: str = "") -> list[Book]:
     """Parse the '近期新書' section which contains pub dates."""
     soup = BeautifulSoup(html, "lxml")
@@ -141,11 +153,9 @@ def _parse_recent_books(html: str, category: str = "") -> list[Book]:
 
         # Cover image
         image_url = ""
-        img = item_div.find("img", class_="cover")
-        if img and img.get("src"):
-            image_url = img["src"]
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
+        img = item_div.find("img", class_="cover") or item_div.find("img")
+        if img:
+            image_url = _extract_cover_url(img)
 
         books.append(
             Book(
@@ -272,11 +282,9 @@ def _parse_extra_source(
 
         # Cover image
         image_url = ""
-        img = item.find("img", class_="cover")
-        if img and img.get("src"):
-            image_url = img["src"]
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
+        img = item.find("img", class_="cover") or item.find("img")
+        if img:
+            image_url = _extract_cover_url(img)
 
         books.append(
             Book(
