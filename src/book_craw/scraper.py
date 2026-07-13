@@ -9,8 +9,8 @@ import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-import httpx
 from bs4 import BeautifulSoup
+from curl_cffi import requests as curl_requests
 
 from book_craw.config import (
     CATEGORIES,
@@ -27,17 +27,20 @@ from book_craw.config import (
 log = logging.getLogger(__name__)
 
 # 全域共用 HTTP client（維持 cookies 與連線池，像正常使用者連續瀏覽）
-_client: httpx.Client | None = None
+# 用 curl_cffi 模擬 Chrome 的 TLS 指紋：博客來的 Cloudflare 會對 httpx/requests
+# 的 TLS handshake 判定為非瀏覽器來源，回傳 403 + cf-mitigated: challenge，
+# 即使 headers 補完整也一樣（純 headers 繞不過，需要 TLS 層 impersonate）。
+_client: curl_requests.Session | None = None
 
 
-def _get_client() -> httpx.Client:
+def _get_client() -> curl_requests.Session:
     """取得或建立共用的 HTTP client。"""
     global _client
     if _client is None:
-        _client = httpx.Client(
+        _client = curl_requests.Session(
             headers=REQUEST_HEADERS,
             timeout=REQUEST_TIMEOUT,
-            follow_redirects=True,
+            impersonate="chrome",
         )
     return _client
 
@@ -69,7 +72,7 @@ def fetch_page(url: str) -> str:
             resp.raise_for_status()
             resp.encoding = "utf-8"
             return resp.text
-        except (httpx.HTTPStatusError, httpx.TransportError) as e:
+        except curl_requests.exceptions.RequestException as e:
             if attempt == REQUEST_MAX_RETRIES:
                 raise
             # 指數退避：10s, 20s, 40s...
