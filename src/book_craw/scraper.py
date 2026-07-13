@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
 import re
 import time
@@ -15,21 +16,18 @@ from curl_cffi import requests as curl_requests
 from book_craw.config import (
     CATEGORIES,
     EXTRA_SOURCES,
+    FIRECRAWL_API_URL,
     NEW_BOOKS_URL_TEMPLATE,
     PREORDER_URL,
     REQUEST_DELAY_MAX,
     REQUEST_DELAY_MIN,
-    REQUEST_HEADERS,
     REQUEST_MAX_RETRIES,
     REQUEST_TIMEOUT,
 )
 
 log = logging.getLogger(__name__)
 
-# 全域共用 HTTP client（維持 cookies 與連線池，像正常使用者連續瀏覽）
-# 用 curl_cffi 模擬 Chrome 的 TLS 指紋：博客來的 Cloudflare 會對 httpx/requests
-# 的 TLS handshake 判定為非瀏覽器來源，回傳 403 + cf-mitigated: challenge，
-# 即使 headers 補完整也一樣（純 headers 繞不過，需要 TLS 層 impersonate）。
+# 全域共用 HTTP client，呼叫 Firecrawl scrape API（維持連線池）
 _client: curl_requests.Session | None = None
 
 
@@ -37,11 +35,7 @@ def _get_client() -> curl_requests.Session:
     """取得或建立共用的 HTTP client。"""
     global _client
     if _client is None:
-        _client = curl_requests.Session(
-            headers=REQUEST_HEADERS,
-            timeout=REQUEST_TIMEOUT,
-            impersonate="chrome",
-        )
+        _client = curl_requests.Session(timeout=REQUEST_TIMEOUT)
     return _client
 
 
@@ -64,15 +58,26 @@ class Book:
 
 
 def fetch_page(url: str) -> str:
-    """GET 頁面並回傳 HTML，失敗時自動重試（指數退避）。"""
+    """經 Firecrawl API 取得頁面 HTML，失敗時自動重試（指數退避）。
+
+    博客來的 Cloudflare 對 GitHub Actions runner IP 判定為機器人（IP 信譽層），
+    即使用 curl_cffi 模擬瀏覽器 TLS 指紋也一樣 403，只能靠 Firecrawl 代理繞過。
+    """
     client = _get_client()
+    api_key = os.environ["FIRECRAWL_API_KEY"]
     for attempt in range(1, REQUEST_MAX_RETRIES + 1):
         try:
-            resp = client.get(url)
+            resp = client.post(
+                FIRECRAWL_API_URL,
+                json={"url": url, "formats": ["rawHtml"]},
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
             resp.raise_for_status()
-            resp.encoding = "utf-8"
-            return resp.text
-        except curl_requests.exceptions.RequestException as e:
+            body = resp.json()
+            if not body.get("success"):
+                raise RuntimeError(f"Firecrawl scrape 失敗: {body}")
+            return body["data"]["rawHtml"]
+        except (curl_requests.exceptions.RequestException, RuntimeError, KeyError) as e:
             if attempt == REQUEST_MAX_RETRIES:
                 raise
             # 指數退避：10s, 20s, 40s...
