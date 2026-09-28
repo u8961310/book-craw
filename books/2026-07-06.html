@@ -68,6 +68,9 @@ a{color:inherit}
 .price{font-size:14px;color:var(--text)}
 .price em{font-style:normal;color:var(--accent);font-weight:700;margin-right:4px}
 .d{font-size:12px;color:var(--muted)}
+.card{animation:card-in .3s ease-out both}
+@keyframes card-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.card{animation:none}}
 .warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:10px;padding:12px 14px;margin-top:14px;font-size:14px}
 .warn ul{margin:4px 0 0 18px}
 @media (min-width:900px){.chips{flex-wrap:wrap;width:auto}}
@@ -160,7 +163,7 @@ a{color:inherit}
       '<div class="cover">'+(img?'<img src="'+esc(img)+'" alt="" loading="lazy" decoding="async">':'<span class="no-cover">無封面</span>')+'</div>'+
       '<div class="info"><span class="t">'+(b.new?'<span class="new">NEW</span>':'')+esc(b.title)+'</span>'+
       '<span class="by">'+esc([b.author,b.publisher].filter(Boolean).join('・'))+'</span>'+
-      '<div class="row"><span class="price">'+price+'</span><span class="d">'+esc((b.pub_date||'').slice(5))+'</span></div></div></a>';
+      '<div class="row"><span class="price">'+price+'</span><span class="d">'+esc((b.pub_date||'').slice(5))+(x.cat==='預購書'&&b.pub_date?' 上市':'')+'</span></div></div></a>';
   }
   function draw(){
     var r=books.filter(function(x){
