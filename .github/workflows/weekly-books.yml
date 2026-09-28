@@ -5,6 +5,11 @@ on:
     # UTC 01:00 Monday = 台北時間 09:00 週一
     - cron: "0 1 * * 1"
   workflow_dispatch:
+    inputs:
+      rebuild_only:
+        description: "只用既有資料重建所有頁面（換版型用；不爬取、不寄信）"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,7 +35,12 @@ jobs:
             mkdir -p gh-pages-dir
           fi
 
+      - name: Rebuild pages only
+        if: ${{ inputs.rebuild_only }}
+        run: uv run python -m book_craw --rebuild ./gh-pages-dir
+
       - name: Run book-craw (email + pages)
+        if: ${{ !inputs.rebuild_only }}
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

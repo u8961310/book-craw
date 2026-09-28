@@ -369,10 +369,16 @@ def scrape_all(
     include_preorders: bool = True,
     include_extra: bool = True,
     recent_days: int = 7,
+    failed: list[str] | None = None,
 ) -> dict[str, list[Book]]:
-    """Scrape all (or selected) categories, extra sources, and pre-orders."""
+    """Scrape all (or selected) categories, extra sources, and pre-orders.
+
+    抓取時發生例外的分類名稱會附加到 `failed`（供健康檢查用）。
+    """
     codes = categories or list(CATEGORIES.keys())
     result: dict[str, list[Book]] = {}
+    if failed is None:
+        failed = []
 
     for code in codes:
         name = CATEGORIES.get(code, code)
@@ -381,6 +387,7 @@ def scrape_all(
         except Exception:
             log.exception("Failed to scrape category %s (%s)", code, name)
             result[name] = []
+            failed.append(name)
         _random_delay()
 
     if include_extra:
@@ -392,6 +399,7 @@ def scrape_all(
         except Exception:
             log.exception("Failed to scrape pre-orders")
             result["預購書"] = []
+            failed.append("預購書")
 
     total = sum(len(v) for v in result.values())
     log.info("Total: %d books across %d categories", total, len(result))

@@ -29,8 +29,11 @@ CATEGORY_GROUPS: list[tuple[str, list[str]]] = [
     ("預購書", ["預購書"]),
 ]
 
-# 需要跨期去重的分類（沒有日期過濾的來源）
-DEDUP_CATEGORIES: set[str] = set()
+# 需要跨期去重的分類（沒有日期過濾的來源）：預購書不看出版日，同一批書會連續好幾週出現
+DEDUP_CATEGORIES: set[str] = {"預購書"}
+
+# 健康檢查：封面比例低於此值就在書單與信件標警告；0% 直接判定失敗（博客來改 lazy-load 的前車之鑑）
+MIN_COVER_RATIO = 0.5
 
 REQUEST_DELAY_MIN = 3  # 隨機間隔下限（秒）
 REQUEST_DELAY_MAX = 6  # 隨機間隔上限（秒）
