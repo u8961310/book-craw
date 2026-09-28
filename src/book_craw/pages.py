@@ -243,7 +243,10 @@ def generate_stats_page(output_dir: Path) -> Path:
     avg = round(total_books / total_weeks) if total_weeks else 0
 
     def stat(value: int, label: str) -> str:
-        return f'<div class="stat"><span class="stat-v">{value}</span><span class="stat-l">{label}</span></div>'
+        return (
+            f'<div class="stat"><span class="stat-v" data-count="{value}">{value}</span>'
+            f'<span class="stat-l">{label}</span></div>'
+        )
 
     summary = (
         '<div class="stats">'
@@ -254,16 +257,36 @@ def generate_stats_page(output_dir: Path) -> Path:
         + "</div>"
     )
 
-    # 趨勢：直條圖，期數多時可左右滑（手機上字不會被縮小）
+    # 趨勢：所有期數塞進一個畫面寬（不用左右滑），點／滑過某期在上方顯示數字；X 軸只在換月時標月份
     max_week = max((c for _, c in weekly_stats), default=1) or 1
-    cols = "".join(
-        f'<div class="col" title="{d}：{c} 本">'
-        f'<span class="col-v">{c}</span>'
-        f'<div class="col-bar" style="height:{c / max_week * 100:.1f}%"></div>'
-        f'<span class="col-d">{d[5:]}</span></div>'
-        for d, c in weekly_stats
-    )
-    trend = f'<div class="trend"><div class="trend-inner">{cols}</div></div>' if cols else '<p class="empty">尚無資料</p>'
+    col_parts: list[str] = []
+    prev_month = ""
+    last_label_i = -99
+    for i, (d, c) in enumerate(weekly_stats):
+        month = d[:7]
+        label = ""
+        # 換月才標；離上一個標籤太近（< 3 期）就跳過，避免文字重疊
+        if month != prev_month and i - last_label_i >= 3:
+            m = int(d[5:7])
+            label = f'<span class="col-m">{m}月</span>'
+            last_label_i = i
+        prev_month = month
+        diff = c - weekly_stats[i - 1][1] if i else 0
+        col_parts.append(
+            f'<button type="button" class="col" data-d="{d}" data-v="{c}" data-diff="{diff if i else ""}" '
+            f'aria-label="{d}：{c} 本" style="--h:{c / max_week * 100:.1f}%;--i:{i}">'
+            f'<span class="col-bar"></span>{label}</button>'
+        )
+    if col_parts:
+        trend = (
+            '<div class="trend">'
+            '<div class="trend-cap" aria-live="polite"><span id="cap-d"></span>'
+            '<b id="cap-v"></b><span class="cap-u">本</span><span id="cap-diff"></span></div>'
+            f'<div class="trend-bars">{"".join(col_parts)}</div>'
+            '<p class="trend-hint">點選或按住左右拖曳，看各期書數</p></div>'
+        )
+    else:
+        trend = '<p class="empty">尚無資料</p>'
 
     # 分類累計排行：手機上標籤放在長條上方，避免擠壓
     ranked = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
@@ -299,7 +322,7 @@ def generate_stats_page(output_dir: Path) -> Path:
   <h2 class="sec-title">各分類累計</h2>
   <div class="bars">{bars}</div>
 </main>
-<script>(function(){{var t=document.querySelector('.trend');if(t)t.scrollLeft=t.scrollWidth;}})();</script>"""
+<script>{_STATS_JS}</script>"""
 
     out_path = output_dir / "stats.html"
     out_path.write_text(_page("書單統計", body, extra_css=_STATS_CSS), encoding="utf-8")
@@ -446,6 +469,9 @@ _WEEKLY_CSS = """\
 .price{font-size:14px;color:var(--text)}
 .price em{font-style:normal;color:var(--accent);font-weight:700;margin-right:4px}
 .d{font-size:12px;color:var(--muted)}
+.card{animation:card-in .3s ease-out both}
+@keyframes card-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.card{animation:none}}
 .warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:10px;padding:12px 14px;margin-top:14px;font-size:14px}
 .warn ul{margin:4px 0 0 18px}
 @media (min-width:900px){.chips{flex-wrap:wrap;width:auto}}
@@ -477,20 +503,95 @@ _STATS_CSS = """\
 .stat-v{font-size:28px;font-weight:700;line-height:1.2}
 .stat:first-child .stat-v{color:var(--accent)}
 .stat-l{font-size:13px;color:var(--muted)}
-.trend{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 12px 8px}
-.trend-inner{display:flex;align-items:flex-end;gap:6px;height:220px;min-width:100%;width:max-content}
-.col{flex:none;width:40px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
-.col-bar{width:24px;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
-.col-v{font-size:12px;color:var(--text)}
-.col-d{font-size:12px;color:var(--muted)}
+.trend{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 14px 10px}
+.trend-cap{display:flex;align-items:baseline;gap:6px;min-height:34px;flex-wrap:wrap}
+#cap-d{color:var(--muted);font-size:14px}
+#cap-v{font-size:26px;line-height:1.1}
+.cap-u{color:var(--muted);font-size:14px}
+#cap-diff{font-size:13px;color:var(--muted);margin-left:4px}
+.trend-bars{display:flex;align-items:flex-end;gap:2px;height:200px;margin:10px 0 24px;border-bottom:1px solid var(--line);
+  touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.col{position:relative;flex:1 1 0;min-width:0;height:100%;display:flex;align-items:flex-end;
+  background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.col-bar{display:block;width:100%;height:var(--h);min-height:2px;background:var(--accent);opacity:.5;
+  border-radius:3px 3px 0 0;transform-origin:bottom;transition:opacity .2s}
+.col:hover .col-bar,.col.on .col-bar{opacity:1}
+.col:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.col-m{position:absolute;left:0;top:100%;margin-top:4px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none}
+.trend-hint{font-size:12px;color:var(--muted);text-align:right}
 .bars{display:flex;flex-direction:column;gap:10px;margin-bottom:40px}
 .bar-top{display:flex;justify-content:space-between;font-size:14px}
 .bar-top b{font-weight:600}
 .bar-track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden;margin-top:3px}
-.bar-fill{height:100%;background:var(--accent);border-radius:5px}
+.bar-fill{height:100%;background:var(--accent);border-radius:5px;transform-origin:left}
+/* 動畫：JS 載入後加 .anim 才播放，沒有 JS 時直接顯示完整圖表 */
+.anim .col-bar{animation:grow-y .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i) * 25ms)}
+.anim .bar-fill{transform:scaleX(0);transition:transform .8s cubic-bezier(.2,.8,.2,1)}
+.anim .bar.in .bar-fill{transform:scaleX(1);transition-delay:calc(var(--i,0) * 40ms)}
+#cap-v.bump{animation:bump .3s ease-out}
+@keyframes grow-y{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes bump{from{transform:translateY(4px);opacity:.3}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.anim .col-bar,#cap-v.bump{animation:none}.anim .bar-fill{transform:none;transition:none}}
 .more summary{cursor:pointer;color:var(--accent);font-weight:600;padding:10px 0;min-height:44px}
 .more .bars{margin:6px 0 0}
 @media (max-width:560px){.stats{grid-template-columns:1fr 1fr}.stat-v{font-size:24px}}
+"""
+
+_STATS_JS = r"""
+(function(){
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var main=document.querySelector('main');
+  if(!reduce) main.classList.add('anim');
+
+  // 摘要數字從 0 跳到實際值
+  if(!reduce) document.querySelectorAll('.stat-v[data-count]').forEach(function(el){
+    var end=+el.dataset.count, t0=null;
+    function step(t){ if(!t0) t0=t; var p=Math.min((t-t0)/700,1);
+      el.textContent=Math.round(end*(1-Math.pow(1-p,3))); if(p<1) requestAnimationFrame(step); }
+    el.textContent='0'; requestAnimationFrame(step);
+  });
+
+  // 趨勢圖：點／滑過某一期，上方顯示該期書數與前一期差距
+  var cols=[].slice.call(document.querySelectorAll('.col'));
+  var capD=document.getElementById('cap-d'), capV=document.getElementById('cap-v'), capDiff=document.getElementById('cap-diff');
+  function pick(c){
+    if(!c||c.classList.contains('on')) return;
+    cols.forEach(function(x){x.classList.toggle('on',x===c);x.tabIndex=x===c?0:-1;});
+    capD.textContent=c.dataset.d+(c===cols[cols.length-1]?'（最新）':'');
+    capV.textContent=c.dataset.v;
+    capV.classList.remove('bump'); void capV.offsetWidth; capV.classList.add('bump');
+    var d=c.dataset.diff; capDiff.textContent=d===''?'':'比前一期 '+(+d>0?'+':'')+d;
+  }
+  cols.forEach(function(c){ c.addEventListener('focus',function(){pick(c);}); });
+  // 長條很細（手機上約 7px），改成依手指／滑鼠的水平位置選最近的一期，可以按住拖曳
+  var area=document.querySelector('.trend-bars'), dragging=false;
+  function at(e){
+    var r=area.getBoundingClientRect();
+    var i=Math.floor((e.clientX-r.left)/r.width*cols.length);
+    pick(cols[Math.max(0,Math.min(cols.length-1,i))]);
+  }
+  if(area){
+    area.addEventListener('pointerdown',function(e){dragging=true;at(e);});
+    area.addEventListener('pointermove',function(e){if(dragging||e.pointerType==='mouse')at(e);});
+    ['pointerup','pointercancel','pointerleave'].forEach(function(t){area.addEventListener(t,function(){dragging=false;});});
+  }
+  pick(cols[cols.length-1]);
+  // 鍵盤：左右鍵切換期數
+  if(area) area.addEventListener('keydown',function(e){
+    var i=cols.indexOf(document.activeElement); if(i<0) return;
+    var n=e.key==='ArrowLeft'?i-1:e.key==='ArrowRight'?i+1:-1;
+    if(n>=0&&n<cols.length){e.preventDefault();cols[n].focus();}
+  });
+
+  // 分類排行：捲到畫面內才伸長
+  var bars=document.querySelectorAll('.bar');
+  if(reduce||!('IntersectionObserver' in window)){bars.forEach(function(b){b.classList.add('in');});return;}
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){
+    if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.2});
+  bars.forEach(function(b,i){b.style.setProperty('--i',i%12);io.observe(b);});
+  document.querySelectorAll('.more').forEach(function(d){d.addEventListener('toggle',function(){
+    d.querySelectorAll('.bar').forEach(function(b){b.classList.add('in');});});});
+})();
 """
 
 _WEEKLY_JS = r"""
@@ -532,7 +633,7 @@ _WEEKLY_JS = r"""
       '<div class="cover">'+(img?'<img src="'+esc(img)+'" alt="" loading="lazy" decoding="async">':'<span class="no-cover">無封面</span>')+'</div>'+
       '<div class="info"><span class="t">'+(b.new?'<span class="new">NEW</span>':'')+esc(b.title)+'</span>'+
       '<span class="by">'+esc([b.author,b.publisher].filter(Boolean).join('・'))+'</span>'+
-      '<div class="row"><span class="price">'+price+'</span><span class="d">'+esc((b.pub_date||'').slice(5))+'</span></div></div></a>';
+      '<div class="row"><span class="price">'+price+'</span><span class="d">'+esc((b.pub_date||'').slice(5))+(x.cat==='預購書'&&b.pub_date?' 上市':'')+'</span></div></div></a>';
   }
   function draw(){
     var r=books.filter(function(x){

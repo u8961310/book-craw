@@ -21,6 +21,7 @@ CATEGORIES: dict[str, str] = {
 
 NEW_BOOKS_URL_TEMPLATE = "https://www.books.com.tw/web/books_nbtopm_{code}"
 PREORDER_URL = "https://www.books.com.tw/web/sys_prebooks/books/"
+PREORDER_MAX_PAGES = 3  # 預購頁每頁 100 本，目前約 2 頁；上限避免無窮翻頁吃 Firecrawl 額度
 
 EXTRA_SOURCES: dict[str, str] = {}
 

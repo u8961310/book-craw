@@ -18,6 +18,7 @@ from book_craw.config import (
     EXTRA_SOURCES,
     FIRECRAWL_API_URL,
     NEW_BOOKS_URL_TEMPLATE,
+    PREORDER_MAX_PAGES,
     PREORDER_URL,
     REQUEST_DELAY_MAX,
     REQUEST_DELAY_MIN,
@@ -100,24 +101,35 @@ def _extract_cover_url(img) -> str:
     return ""
 
 
-def _parse_recent_books(html: str, category: str = "") -> list[Book]:
-    """Parse the '近期新書' section which contains pub dates."""
+_PUB_DATE_RE = re.compile(r"出版日期：(\d{4})[-/](\d{1,2})[-/](\d{1,2})")
+
+
+def _parse_pub_date(text: str) -> str:
+    """出版日期轉 ISO 格式；新書頁是 2026-09-28，預購頁是 2026/11/26。"""
+    m = _PUB_DATE_RE.search(text)
+    if not m:
+        return ""
+    y, mo, d = m.groups()
+    return f"{y}-{int(mo):02d}-{int(d):02d}"
+
+
+class SectionNotFoundError(RuntimeError):
+    """找不到書單區塊，代表網頁結構可能改了（要讓健康檢查知道，不能默默回傳 0 本）。"""
+
+
+def _parse_recent_books(html: str, category: str = "", heading: str = "近期新書") -> list[Book]:
+    """解析標題含 `heading` 的書單區塊（新書頁為「近期新書」，預購頁為「共有 N 本」）。"""
     soup = BeautifulSoup(html, "lxml")
     books: list[Book] = []
 
-    # Find the 近期新書 section
     h3 = None
     for tag in soup.find_all("h3"):
-        if "近期新書" in tag.get_text():
+        if heading in tag.get_text():
             h3 = tag
             break
-    if h3 is None:
-        log.warning("Could not find '近期新書' section (category=%s)", category)
-        return books
-
-    section = h3.find_parent("div", class_=re.compile(r"mod_a"))
+    section = h3.find_parent("div", class_=re.compile(r"mod_a")) if h3 else None
     if section is None:
-        return books
+        raise SectionNotFoundError(f"找不到「{heading}」區塊（category={category}）")
 
     for item_div in section.find_all("div", class_="item"):
         # Title & URL
@@ -146,10 +158,7 @@ def _parse_recent_books(html: str, category: str = "") -> list[Book]:
             pub_link = info_li.find("a", href=re.compile(r"pubid"))
             if pub_link:
                 publisher = pub_link.get_text(strip=True)
-            info_text = info_li.get_text()
-            m = re.search(r"出版日期：(\d{4}-\d{2}-\d{2})", info_text)
-            if m:
-                pub_date = m.group(1)
+            pub_date = _parse_pub_date(info_li.get_text())
 
         # Price
         price = ""
@@ -178,7 +187,7 @@ def _parse_recent_books(html: str, category: str = "") -> list[Book]:
             )
         )
 
-    log.info("Parsed %d books from 近期新書 (category=%s)", len(books), category)
+    log.info("Parsed %d books from %s (category=%s)", len(books), heading, category)
     return books
 
 
@@ -267,10 +276,7 @@ def _parse_extra_source(
             pub_link = info_li.find("a", href=re.compile(r"pubid"))
             if pub_link:
                 publisher = pub_link.get_text(strip=True)
-            info_text = info_li.get_text()
-            m = re.search(r"出版日期：(\d{4}-\d{2}-\d{2})", info_text)
-            if m:
-                pub_date = m.group(1)
+            pub_date = _parse_pub_date(info_li.get_text())
 
         # Price — try price_box first, then price_a, then whole item
         price = ""
@@ -357,11 +363,27 @@ def scrape_category(code: str, recent_days: int = 7) -> list[Book]:
     return books
 
 
-def scrape_preorders() -> list[Book]:
-    """Scrape pre-order books (no date filter)."""
-    log.info("Fetching pre-orders: %s", PREORDER_URL)
-    html = fetch_page(PREORDER_URL)
-    return _parse_recent_books(html, category="預購書")
+def scrape_preorders(max_pages: int = PREORDER_MAX_PAGES) -> list[Book]:
+    """Scrape pre-order books (no date filter; 跨期去重在 main 處理)。
+
+    預購頁沒有「近期新書」，主清單標題是「共有 N 本」，每頁 100 本、依上市日期新→舊。
+    """
+    books: list[Book] = []
+    seen: set[str] = set()
+    for page in range(1, max_pages + 1):
+        url = PREORDER_URL if page == 1 else f"{PREORDER_URL}?o=1&v=2&page={page}"
+        log.info("Fetching pre-orders page %d: %s", page, url)
+        html = fetch_page(url)
+        for b in _parse_recent_books(html, category="預購書", heading="共有"):
+            key = b.url.split("?")[0]
+            if key not in seen:
+                seen.add(key)
+                books.append(b)
+        if f"page={page + 1}" not in html:
+            break
+        _random_delay()
+    log.info("Parsed %d pre-order books", len(books))
+    return books
 
 
 def scrape_all(
